@@ -1,13 +1,14 @@
 #include "canvas.h"
 #include <QTimer>
 #include <QtMath>
+#include <QRandomGenerator>
 
 Canvas::Canvas() {
     this->drawSquare = false;
     this->setXLength(600);
     this->setYLength(600);
     this->setMsToRedraw(15);
-    this->setSandSideLength(30);
+    this->setSandSideLength(20);
     //this->setFallSpeed(5);
 
     //Initializing the screen matrix.
@@ -33,7 +34,6 @@ Canvas::Canvas() {
     //Test below to watch a sand fall.
     //this->drawSquare = true;
     //this->drawSand(300,100);
-    srand(time(0));
 }
 
 Canvas::~Canvas(){
@@ -112,37 +112,75 @@ void Canvas::clamp(int* x, int *y){
 
 void Canvas::drawSand(int x, int y){
     if(this->drawSquare && !this->isOccupied(x,y)){
-        this->clamp(&x,&y);
+        //this->clamp(&x,&y);
         this->findClosestDrawingPoint(&x,&y);
         this->screenMatrix[x][y] = true;
-        //qInfo() << "Drawing to x: " <<x << ", y: " << y << "--  xLength: " << this->getXLength() << ", yLength: " <<this->getYLength();
     }
-    //update();
+}
+
+void Canvas::fallLeft(int x, int y){
+    this->screenMatrix[x][y] = false;
+    this->screenMatrix[x-this->getSandSideLength()][y+this->getSandSideLength()] = true;
+}
+
+void Canvas::fallRight(int x, int y){
+    this->screenMatrix[x][y] = false;
+    this->screenMatrix[x+this->getSandSideLength()][y+this->getSandSideLength()] = true;
 }
 
 void Canvas::computeScreenMatrix(){
     //qInfo() <<"Called computeScreenMatrix";
+    update();
     for(int x = 0; x< this->getXLength();x++){
         for(int y = 0; y< this->getYLength();y++){
             if(this->isOccupied(x,y)){
+                //qInfo() << y;
+
                 if(this->touchesGround(x,y)){
-                    //TODO Check if it needs to go sides.
-                    //qInfo() <<"Touches ground.";
-                    continue;
+                    //TODO randomize below.
+                    if(this->canFallRight(x,y) && this->canFallLeft(x,y)){
+                        //If both sides are suitable, randomly decide which side to fall.
+                        QRandomGenerator *generator = QRandomGenerator::global();
+                        int randSide = generator->bounded(2); // 0 or 1
+                        if(randSide == 0){//Fall left
+                            this->fallLeft(x,y);
+                        }
+                        else{//Fall right.
+                            this->fallRight(x,y);
+                            x+= this->getSandSideLength()+1;
+                        }
+                        continue;
+                    }
+
+                    //Maybe increment or decrement x accordingly too? TODO
+                    if(this->canFallRight(x,y)){
+                        this->fallRight(x,y);
+                        x+= this->getSandSideLength()+1;
+                    }
+                    else if(this->canFallLeft(x,y)){
+                        this->fallLeft(x,y);
+                    }
                 }
                 else{
-                    //qInfo() <<"Does not touch ground. x: " << x << ", y: " <<y;
-                    if(y < this->getYLength()-2){
                         this->screenMatrix[x][y] = false;
-                        this->screenMatrix[x][y+this->getSandSideLength()/2] = true;
+                        this->screenMatrix[x][y+this->getSandSideLength()] = true;
                         y+= this->getSandSideLength()+1;
-                    }
                 }
             }
         }
     }
-    update();
 
+
+}
+
+bool Canvas::canFallRight(int x,int y){
+
+   return (this->withinBoundaries(x+this->getSandSideLength(),y)) &&(!this->isOccupied(x+this->getSandSideLength(),y+this->getSandSideLength()) &&
+            this->isOccupied(x+this->getSandSideLength(),y+ (2*this->getSandSideLength())));
+}
+bool Canvas::canFallLeft(int x,int y){
+    return (this->withinBoundaries(x-this->getSandSideLength()/2,y)) && (!this->isOccupied(x-this->getSandSideLength(),y+this->getSandSideLength()) &&
+            this->isOccupied(x-this->getSandSideLength(),y+ (2*this->getSandSideLength())));
 }
 
 void Canvas::paintEvent(QPaintEvent *event){
@@ -150,21 +188,21 @@ void Canvas::paintEvent(QPaintEvent *event){
     //qInfo()<< "Paint event called";
 
     //TODO. Fix below. It does not keep creating sand as I hold mouse button in a specific position.
-    if(this->drawSquare){
-            int* x = new int;
-            int* y = new int;
+    // if(this->drawSquare){
+    //         int* x = new int;
+    //         int* y = new int;
 
-            *x = this->lastMousePos->x();
-            *y = this->lastMousePos->y();
-            this->findClosestDrawingPoint(x,y);
+    //         *x = this->lastMousePos->x();
+    //         *y = this->lastMousePos->y();
+    //         this->findClosestDrawingPoint(x,y);
 
-            this->clamp(x,y);
-            this->findClosestDrawingPoint(x,y);
-            this->screenMatrix[*x][*y] = true;
+    //         this->clamp(x,y);
+    //         this->findClosestDrawingPoint(x,y);
+    //         this->screenMatrix[*x][*y] = true;
 
-            delete x;
-            delete y;
-    }
+    //         delete x;
+    //         delete y;
+    // }
 
     QPainter painter(this);
 
@@ -186,21 +224,21 @@ void Canvas::paintEvent(QPaintEvent *event){
 }
 
 bool Canvas::withinBoundaries(int x, int y){
-    if((x > 0 && x < this->getXLength()-1) && (y > 0 && y < this->getYLength()-1)){
+    if((x > 0 && x < this->getXLength()) && (y > 0 && y < this->getYLength())){
         return true;
     }
     return false;
 }
 
 bool Canvas::touchesGround(int x, int y){
-    if(y == this->getYLength()-2)//On the bottom of the screen.
+    if(y >= this->getYLength() - this->getSandSideLength())//On the bottom of the screen.
     {
         return true;
     }
-    if(this->isOccupied(x,y+this->getSandSideLength())){ //If it does not have a sand one cell below.
+    else if(this->isOccupied(x,y+this->getSandSideLength())){ //If it has a sand one cell below.
         return true;
     }
-    else{   //If it has a sand one cell below.
+    else{ //If it does not have a sand one cell below.
         return false;
     }
 
@@ -223,10 +261,6 @@ void Canvas::initAvailableDrawingPoints(){
             delete point;
         }
     }
-    //Printing to test below.
-    //for(int i =0; i<pointCount;i++){
-    //    qInfo() << i << ", point: " << this->availableDrawingPoints[i];
-    //}
 }
 
 

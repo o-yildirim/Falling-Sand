@@ -20,6 +20,10 @@ class Canvas : public QWidget
         bool touchesGround(int,int);
         bool withinBoundaries(int,int);
         bool isOccupied(int,int);
+        bool canFallRight(int,int);
+        bool canFallLeft(int,int);
+        void fallRight(int,int);
+        void fallLeft(int,int);
         void clamp(int*,int*);
         void findClosestDrawingPoint(int*,int*);
         float euclideanDist(int,int,int,int);
