@@ -1,29 +1,51 @@
 #include "canvas.h"
 #include <QTimer>
+#include <QtMath>
 
 Canvas::Canvas() {
     this->drawSquare = false;
     this->setXLength(600);
     this->setYLength(600);
     this->setMsToRedraw(15);
-    this->setSandSideLength(1);
+    this->setSandSideLength(30);
+    //this->setFallSpeed(5);
 
     //Initializing the screen matrix.
     this->initializeScreenMatrix();
 
-    //qInfo() <<"xLength: " << this->getXLength() << ", yLength: " << this->getYLength();
+    //Initializing the available drawing points.
+    this->initAvailableDrawingPoints();
 
+    //Set up brush color.
+    this->brushColor = new QColor(Qt::gray);
+
+    //Initialize the QPoint object that will keep track of the last position of our mouse.
+    this->lastMousePos = new QPoint();
 
     //Set up timer.
-    QTimer *timer = new QTimer(this);
-    connect(timer, &QTimer::timeout, this, &Canvas::computeScreenMatrix);
-    timer->start(this->getMsToRedraw());
+    this->timer = new QTimer(this);
+    connect(this->timer, &QTimer::timeout, this, &Canvas::computeScreenMatrix);
+    this->timer->start(this->getMsToRedraw());
+
+
     this->initialized = true;
 
     //Test below to watch a sand fall.
     //this->drawSquare = true;
     //this->drawSand(300,100);
+    srand(time(0));
+}
 
+Canvas::~Canvas(){
+    delete[] this->availableDrawingPoints;
+
+    for(int i = 0; i< this->getXLength(); i++){
+        delete[] this->screenMatrix[i];
+    }
+    delete[] this->screenMatrix;
+    delete this->timer;
+    delete this->brushColor;
+    delete this->lastMousePos;
 
 }
 
@@ -35,31 +57,33 @@ void Canvas::initializeScreenMatrix(){
 
     for(int i = 0; i < this->getXLength();i++){
         for (int j = 0; j< this->getYLength(); j++){
-                this->screenMatrix[i][j] = false;
+                  this->screenMatrix[i][j] = false;
             }
     }
 
 }
 
 
-
-
 void Canvas::mousePressEvent(QMouseEvent *event){
-
     this->drawSquare = true;
     QPoint clickPosition = event->pos();
     drawSand(clickPosition.x(), clickPosition.y());
-    Q_UNUSED(event);
+
+    this->lastMousePos->setX(clickPosition.x());
+    this->lastMousePos->setY(clickPosition.y());
 
 }
 
 void Canvas::mouseMoveEvent(QMouseEvent *event){
+    if(!this->withinBoundaries(event->pos().x(),event->pos().y())) return;
 
     if(this->drawSquare == true){
-        QPoint clickPosition = event->pos(); 
+        QPoint clickPosition = event->pos();
         drawSand(clickPosition.x(), clickPosition.y());
-    }
 
+        this->lastMousePos->setX(clickPosition.x());
+        this->lastMousePos->setY(clickPosition.y());
+    }
 }
 
 void Canvas::mouseReleaseEvent(QMouseEvent *event){
@@ -87,27 +111,16 @@ void Canvas::clamp(int* x, int *y){
 }
 
 void Canvas::drawSand(int x, int y){
-
     if(this->drawSquare && !this->isOccupied(x,y)){
         this->clamp(&x,&y);
-        //TODO Convert position.x and position.y to the indices in this->screenMatrix. Probably with a for loop, make multiple cells true.
+        this->findClosestDrawingPoint(&x,&y);
         this->screenMatrix[x][y] = true;
         //qInfo() << "Drawing to x: " <<x << ", y: " << y << "--  xLength: " << this->getXLength() << ", yLength: " <<this->getYLength();
     }
-    update();
-}
-
-void Canvas::removeSand(int x, int y){
-    this->clamp(&x,&y);
-    //qInfo() <<"Removing from " << x  << ", " << y <<  " -- xLength: " << this->getXLength() << ", yLength: " <<this->getYLength();
-    //TODO Convert position.x and position.y to the indices in this->screenMatrix. Probably with a for loop, make multiple cells true.
-    this->screenMatrix[x][y] = false;
-    update();
+    //update();
 }
 
 void Canvas::computeScreenMatrix(){
-    //Make the sand pieces fall by making their current cells false and one below true.
-
     //qInfo() <<"Called computeScreenMatrix";
     for(int x = 0; x< this->getXLength();x++){
         for(int y = 0; y< this->getYLength();y++){
@@ -121,8 +134,8 @@ void Canvas::computeScreenMatrix(){
                     //qInfo() <<"Does not touch ground. x: " << x << ", y: " <<y;
                     if(y < this->getYLength()-2){
                         this->screenMatrix[x][y] = false;
-                        this->screenMatrix[x][y+1] = true;
-                        y++;
+                        this->screenMatrix[x][y+this->getSandSideLength()/2] = true;
+                        y+= this->getSandSideLength()+1;
                     }
                 }
             }
@@ -136,15 +149,36 @@ void Canvas::paintEvent(QPaintEvent *event){
     Q_UNUSED(event);
     //qInfo()<< "Paint event called";
 
+    //TODO. Fix below. It does not keep creating sand as I hold mouse button in a specific position.
+    if(this->drawSquare){
+            int* x = new int;
+            int* y = new int;
+
+            *x = this->lastMousePos->x();
+            *y = this->lastMousePos->y();
+            this->findClosestDrawingPoint(x,y);
+
+            this->clamp(x,y);
+            this->findClosestDrawingPoint(x,y);
+            this->screenMatrix[*x][*y] = true;
+
+            delete x;
+            delete y;
+    }
+
     QPainter painter(this);
 
     for(int y = 0; y<this->getYLength();y++){
         for(int x = 0; x< this->getXLength();x++){
             if(this->isOccupied(x,y) == true){
-                 painter.setBrush(Qt::blue);
-                 painter.setPen(Qt::blue);
+                 painter.setBrush(QColor(this->brushColor->red(), this->brushColor->green(), this->brushColor->blue(),this->brushColor->alpha()));
+                 painter.setPen(QColor(this->brushColor->red(), this->brushColor->green(), this->brushColor->blue(),this->brushColor->alpha()));
                  //qInfo()<<"Painting blue at " << x << ", " << y;
                  painter.drawRect(x,y, this->sandSideLength, this->sandSideLength);
+
+                 //TODO below. Store every sand and their colors in an array.
+                 //delete this->brushColor;
+                 //this->brushColor = new QColor(rand()%255, rand()%255, rand()%255, rand()%255);
             }
 
         }
@@ -163,9 +197,7 @@ bool Canvas::touchesGround(int x, int y){
     {
         return true;
     }
-
-
-    if(this->isOccupied(x,y+1)){ //If it does not have a sand one cell below.
+    if(this->isOccupied(x,y+this->getSandSideLength())){ //If it does not have a sand one cell below.
         return true;
     }
     else{   //If it has a sand one cell below.
@@ -173,6 +205,50 @@ bool Canvas::touchesGround(int x, int y){
     }
 
 
+}
+
+void Canvas::initAvailableDrawingPoints(){
+    if(this->getSandSideLength() == 1) return; //Every pixel is a sand piece, further computation is not needed.
+
+    int sandSideLength = this->getSandSideLength();
+    this->sizeOfAvailableDrawingPoints = (this->getXLength() * this->getYLength()) / (sandSideLength * sandSideLength);
+    this->availableDrawingPoints = new QPoint[this->sizeOfAvailableDrawingPoints];
+
+    int currentIndex = 0;
+    for(int x = 0; x < this->getXLength(); x+= sandSideLength){
+        for(int y = 0; y < this->getYLength(); y+= sandSideLength){
+            QPoint* point = new QPoint(x,y);
+            this->availableDrawingPoints[currentIndex] = *point;
+            currentIndex++;
+            delete point;
+        }
+    }
+    //Printing to test below.
+    //for(int i =0; i<pointCount;i++){
+    //    qInfo() << i << ", point: " << this->availableDrawingPoints[i];
+    //}
+}
+
+
+float Canvas::euclideanDist(int x1,int x2, int y1, int y2){
+    return qSqrt(qPow((x1 - x2), 2) + qPow((y1 - y2), 2));
+}
+
+void Canvas::findClosestDrawingPoint(int* x, int* y){
+    if(this->getSandSideLength() == 1) return; //No need for further computation.
+
+    QPoint closest;
+    float closestDist = this->euclideanDist(0, this->getXLength(), 0, this->getYLength()); //Initialized as the longest distance possible.
+    for(int i = 0; i < this->sizeOfAvailableDrawingPoints; i++){
+        QPoint curPoint = this->availableDrawingPoints[i];
+        float dist = this->euclideanDist(*x, curPoint.x(), *y, curPoint.y());
+        if(dist < closestDist){
+            closestDist = dist;
+            closest = curPoint;
+        }
+    }
+    *x = closest.x();
+    *y = closest.y();
 }
 
 bool Canvas::isOccupied(int x, int y){
@@ -212,6 +288,15 @@ void Canvas::setSandSideLength(int length){
 int Canvas::getSandSideLength(){
     return this->sandSideLength;
 }
+
+// void Canvas::setFallSpeed(int speed){
+//     this->fallSpeed = speed;
+// }
+
+// int Canvas::getFallSpeed(){
+//     return this->fallSpeed;
+// }
+
 
 
 
