@@ -8,7 +8,7 @@ Canvas::Canvas() {
     this->setXLength(600);
     this->setYLength(600);
     this->setMsToRedraw(15);
-    this->setSandSideLength(20);
+    this->setSandSideLength(6);
     //this->setFallSpeed(5);
 
     //Initializing the screen matrix.
@@ -16,6 +16,9 @@ Canvas::Canvas() {
 
     //Initializing the available drawing points.
     this->initAvailableDrawingPoints();
+
+    //Initializing color matrix.
+    this->initializeColorMatrix();
 
     //Set up brush color.
     this->brushColor = new QColor(Qt::gray);
@@ -43,10 +46,24 @@ Canvas::~Canvas(){
         delete[] this->screenMatrix[i];
     }
     delete[] this->screenMatrix;
+
+    for(int i = 0; i< this->getXLength(); i++){
+        delete[] this->colorMatrix[i];
+    }
+    delete[] this->colorMatrix;
+
     delete this->timer;
     delete this->brushColor;
     delete this->lastMousePos;
 
+}
+
+void Canvas::initializeColorMatrix(){
+    //Initializing a square matrix.
+    this->colorMatrix = new QColor*[this->getXLength()];
+    for(int i = 0; i<this->sizeOfAvailableDrawingPoints; i++){
+        this->colorMatrix[i] = new QColor[this->getYLength()];
+    }
 }
 
 void Canvas::initializeScreenMatrix(){
@@ -112,32 +129,43 @@ void Canvas::clamp(int* x, int *y){
 
 void Canvas::drawSand(int x, int y){
     if(this->drawSquare && !this->isOccupied(x,y)){
-        //this->clamp(&x,&y);
         this->findClosestDrawingPoint(&x,&y);
         this->screenMatrix[x][y] = true;
+        this->colorMatrix[x][y] = QColor(this->brushColor->red(),
+                                                    this->brushColor->green(),
+                                                    this->brushColor->blue(),
+                                                    this->brushColor->alpha()
+                                            );
     }
 }
 
 void Canvas::fallLeft(int x, int y){
     this->screenMatrix[x][y] = false;
     this->screenMatrix[x-this->getSandSideLength()][y+this->getSandSideLength()] = true;
+    this->colorMatrix[x-this->getSandSideLength()][y+this->getSandSideLength()] = this->colorMatrix[x][y];
 }
 
 void Canvas::fallRight(int x, int y){
     this->screenMatrix[x][y] = false;
     this->screenMatrix[x+this->getSandSideLength()][y+this->getSandSideLength()] = true;
+    this->colorMatrix[x+this->getSandSideLength()][y+this->getSandSideLength()] = this->colorMatrix[x][y];
+}
+
+void Canvas::fallDown(int x, int y){
+    this->screenMatrix[x][y] = false;
+    this->screenMatrix[x][y+this->getSandSideLength()] = true;
+    this->colorMatrix[x][y+this->getSandSideLength()] = this->colorMatrix[x][y];
 }
 
 void Canvas::computeScreenMatrix(){
     //qInfo() <<"Called computeScreenMatrix";
-    update();
+
     for(int x = 0; x< this->getXLength();x++){
         for(int y = 0; y< this->getYLength();y++){
             if(this->isOccupied(x,y)){
                 //qInfo() << y;
 
                 if(this->touchesGround(x,y)){
-                    //TODO randomize below.
                     if(this->canFallRight(x,y) && this->canFallLeft(x,y)){
                         //If both sides are suitable, randomly decide which side to fall.
                         QRandomGenerator *generator = QRandomGenerator::global();
@@ -152,7 +180,6 @@ void Canvas::computeScreenMatrix(){
                         continue;
                     }
 
-                    //Maybe increment or decrement x accordingly too? TODO
                     if(this->canFallRight(x,y)){
                         this->fallRight(x,y);
                         x+= this->getSandSideLength()+1;
@@ -162,14 +189,13 @@ void Canvas::computeScreenMatrix(){
                     }
                 }
                 else{
-                        this->screenMatrix[x][y] = false;
-                        this->screenMatrix[x][y+this->getSandSideLength()] = true;
+                        this->fallDown(x,y);
                         y+= this->getSandSideLength()+1;
                 }
             }
         }
     }
-
+    update();
 
 }
 
@@ -185,9 +211,7 @@ bool Canvas::canFallLeft(int x,int y){
 
 void Canvas::paintEvent(QPaintEvent *event){
     Q_UNUSED(event);
-    //qInfo()<< "Paint event called";
 
-    //TODO. Fix below. It does not keep creating sand as I hold mouse button in a specific position.
     // if(this->drawSquare){
     //         int* x = new int;
     //         int* y = new int;
@@ -209,9 +233,8 @@ void Canvas::paintEvent(QPaintEvent *event){
     for(int y = 0; y<this->getYLength();y++){
         for(int x = 0; x< this->getXLength();x++){
             if(this->isOccupied(x,y) == true){
-                 painter.setBrush(QColor(this->brushColor->red(), this->brushColor->green(), this->brushColor->blue(),this->brushColor->alpha()));
-                 painter.setPen(QColor(this->brushColor->red(), this->brushColor->green(), this->brushColor->blue(),this->brushColor->alpha()));
-                 //qInfo()<<"Painting blue at " << x << ", " << y;
+                 painter.setBrush(QColor(this->colorMatrix[x][y].red(), this->colorMatrix[x][y].green(), this->colorMatrix[x][y].blue(),this->colorMatrix[x][y].alpha()));
+                 painter.setPen(QColor(this->colorMatrix[x][y].red(), this->colorMatrix[x][y].green(), this->colorMatrix[x][y].blue(),this->colorMatrix[x][y].alpha()));
                  painter.drawRect(x,y, this->sandSideLength, this->sandSideLength);
 
                  //TODO below. Store every sand and their colors in an array.
@@ -331,6 +354,28 @@ int Canvas::getSandSideLength(){
 //     return this->fallSpeed;
 // }
 
+void Canvas::keyPressEvent(QKeyEvent *event){
+    if (event->key() == Qt::Key_Space) {
+        qInfo() << "Spacebar pressed";
+        QRandomGenerator *generator = QRandomGenerator::global();
+        for(int i = 0; i< 4; i++){
+            int randSide = generator->bounded(255); // 0,1,2,3
+            if(i == 0){
+                this->brushColor->setRed(randSide);
+            }
+            else if(i == 1){
+                this->brushColor->setGreen(randSide);
+
+            }
+            else if(i==2){
+                this->brushColor->setBlue(randSide);
+            }
+            else{
+               this->brushColor->setAlpha(randSide);
+            }
+        }
+    }
+}
 
 
 

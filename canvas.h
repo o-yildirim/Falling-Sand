@@ -24,12 +24,14 @@ class Canvas : public QWidget
         bool canFallLeft(int,int);
         void fallRight(int,int);
         void fallLeft(int,int);
+        void fallDown(int,int);
         void clamp(int*,int*);
         void findClosestDrawingPoint(int*,int*);
         float euclideanDist(int,int,int,int);
 
         void initAvailableDrawingPoints();
         void initializeScreenMatrix();
+        void initializeColorMatrix();
 
         int getXLength();
         int getYLength();
@@ -48,6 +50,7 @@ class Canvas : public QWidget
         void mouseMoveEvent(QMouseEvent *event) override;
         void mouseReleaseEvent(QMouseEvent *event) override;
         void paintEvent(QPaintEvent *event) override;
+        void keyPressEvent(QKeyEvent *event) override; //TODO, for test purposes.
 
 
     private:
@@ -58,9 +61,10 @@ class Canvas : public QWidget
         int sizeOfAvailableDrawingPoints;
         int fallSpeed;
         bool drawSquare;
-        bool **screenMatrix;
+        bool** screenMatrix;
+        QColor** colorMatrix;
         bool initialized = false;
-        QPoint *availableDrawingPoints;
+        QPoint* availableDrawingPoints;
         QTimer* timer;
         QColor* brushColor;
         QPoint* lastMousePos;
