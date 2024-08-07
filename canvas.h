@@ -25,32 +25,31 @@ class Canvas : public QWidget
         void fallRight(int,int);
         void fallLeft(int,int);
         void fallDown(int,int);
-        void clamp(int*,int*);
         void findClosestDrawingPoint(int*,int*);
         float euclideanDist(int,int,int,int);
 
         void initAvailableDrawingPoints();
         void initializeScreenMatrix();
         void initializeColorMatrix();
+        void initMovedThisFrameMatrix();
+        void resetMovedThisFrameMatrix();
 
         int getXLength();
         int getYLength();
         int getMsToRedraw();
         int getSandSideLength();
-        int getFallSpeed();
 
         void setXLength(int);
         void setYLength(int);
         void setMsToRedraw(int);
         void setSandSideLength(int);
-        void setFallSpeed(int);
 
     protected:
         void mousePressEvent(QMouseEvent *event) override;
         void mouseMoveEvent(QMouseEvent *event) override;
         void mouseReleaseEvent(QMouseEvent *event) override;
         void paintEvent(QPaintEvent *event) override;
-        void keyPressEvent(QKeyEvent *event) override; //TODO, for test purposes.
+        void keyPressEvent(QKeyEvent *event) override;
 
 
     private:
@@ -59,9 +58,9 @@ class Canvas : public QWidget
         int sandSideLength;
         int msToRedraw;
         int sizeOfAvailableDrawingPoints;
-        int fallSpeed;
         bool drawSquare;
         bool** screenMatrix;
+        bool **movedThisFrameMatrix;
         QColor** colorMatrix;
         bool initialized = false;
         QPoint* availableDrawingPoints;

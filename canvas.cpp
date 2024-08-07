@@ -8,8 +8,7 @@ Canvas::Canvas() {
     this->setXLength(600);
     this->setYLength(600);
     this->setMsToRedraw(15);
-    this->setSandSideLength(6);
-    //this->setFallSpeed(5);
+    this->setSandSideLength(8);
 
     //Initializing the screen matrix.
     this->initializeScreenMatrix();
@@ -19,6 +18,9 @@ Canvas::Canvas() {
 
     //Initializing color matrix.
     this->initializeColorMatrix();
+
+    //Initializing the matrix to keep track of the sands that moved this frame.
+    this->initMovedThisFrameMatrix();
 
     //Set up brush color.
     this->brushColor = new QColor(Qt::gray);
@@ -34,9 +36,6 @@ Canvas::Canvas() {
 
     this->initialized = true;
 
-    //Test below to watch a sand fall.
-    //this->drawSquare = true;
-    //this->drawSand(300,100);
 }
 
 Canvas::~Canvas(){
@@ -51,6 +50,11 @@ Canvas::~Canvas(){
         delete[] this->colorMatrix[i];
     }
     delete[] this->colorMatrix;
+
+    for(int i = 0; i< this->getXLength(); i++){
+        delete[] this->movedThisFrameMatrix[i];
+    }
+    delete[] this->movedThisFrameMatrix;
 
     delete this->timer;
     delete this->brushColor;
@@ -80,6 +84,21 @@ void Canvas::initializeScreenMatrix(){
 
 }
 
+void Canvas::initMovedThisFrameMatrix(){
+    this->movedThisFrameMatrix = new bool*[this->getXLength()];
+    for(int i = 0; i<this->getXLength();i++){
+        this->movedThisFrameMatrix[i] = new bool[this->getYLength()];
+    }
+    this->resetMovedThisFrameMatrix();
+}
+
+void Canvas::resetMovedThisFrameMatrix(){
+    for(int i =0; i< this->getXLength(); i++){
+        for(int j = 0; j < this->getYLength();j++){
+            this->movedThisFrameMatrix[i][j] = false;
+        }
+    }
+}
 
 void Canvas::mousePressEvent(QMouseEvent *event){
     this->drawSquare = true;
@@ -109,24 +128,6 @@ void Canvas::mouseReleaseEvent(QMouseEvent *event){
 }
 
 
-void Canvas::clamp(int* x, int *y){
-    int xLen = this->getXLength();
-    int yLen = this->getYLength();
-    if((*x) >= xLen){
-        (*x) = xLen-1;
-    }
-    else if(*x <= 0){
-        (*x) = 1;
-    }
-
-    if ((*y) >= yLen){
-        (*y) = yLen-1;
-    }
-    else if((*y) <= 0){
-        (*y) = 1;
-    }
-}
-
 void Canvas::drawSand(int x, int y){
     if(this->drawSquare && !this->isOccupied(x,y)){
         this->findClosestDrawingPoint(&x,&y);
@@ -142,57 +143,90 @@ void Canvas::drawSand(int x, int y){
 void Canvas::fallLeft(int x, int y){
     this->screenMatrix[x][y] = false;
     this->screenMatrix[x-this->getSandSideLength()][y+this->getSandSideLength()] = true;
+    this->movedThisFrameMatrix[x-this->getSandSideLength()][y+this->getSandSideLength()] = true;
     this->colorMatrix[x-this->getSandSideLength()][y+this->getSandSideLength()] = this->colorMatrix[x][y];
 }
 
 void Canvas::fallRight(int x, int y){
     this->screenMatrix[x][y] = false;
     this->screenMatrix[x+this->getSandSideLength()][y+this->getSandSideLength()] = true;
+    this->movedThisFrameMatrix[x+this->getSandSideLength()][y+this->getSandSideLength()] = true;
     this->colorMatrix[x+this->getSandSideLength()][y+this->getSandSideLength()] = this->colorMatrix[x][y];
 }
 
 void Canvas::fallDown(int x, int y){
     this->screenMatrix[x][y] = false;
     this->screenMatrix[x][y+this->getSandSideLength()] = true;
+    this->movedThisFrameMatrix[x][y+this->getSandSideLength()] = true;
     this->colorMatrix[x][y+this->getSandSideLength()] = this->colorMatrix[x][y];
+    //qInfo() << y+this->getSandSideLength();
 }
 
+
+
 void Canvas::computeScreenMatrix(){
-    //qInfo() <<"Called computeScreenMatrix";
+    this->resetMovedThisFrameMatrix();
 
-    for(int x = 0; x< this->getXLength();x++){
-        for(int y = 0; y< this->getYLength();y++){
-            if(this->isOccupied(x,y)){
-                //qInfo() << y;
+    if(this->drawSquare){
+        int* x = new int;
+        int* y = new int;
 
-                if(this->touchesGround(x,y)){
-                    if(this->canFallRight(x,y) && this->canFallLeft(x,y)){
+        *x = this->lastMousePos->x();
+        *y = this->lastMousePos->y();
+        this->findClosestDrawingPoint(x,y);
+
+        this->screenMatrix[*x][*y] = true;
+        this->colorMatrix[*x][*y] = QColor(this->brushColor->red(),
+                                         this->brushColor->green(),
+                                         this->brushColor->blue(),
+                                         this->brushColor->alpha()
+                                         );
+
+        delete x;
+        delete y;
+    }
+
+    for(int y = 0; y<this->getYLength();y++){
+        for(int x = 0; x< this->getXLength();x++){
+            if(this->movedThisFrameMatrix[x][y]){
+                continue;
+            }
+
+            if(this->isOccupied(x,y))
+            {
+                if(this->touchesGround(x,y))
+                {
+                    if(this->canFallRight(x,y) && this->canFallLeft(x,y))
+                    {
                         //If both sides are suitable, randomly decide which side to fall.
                         QRandomGenerator *generator = QRandomGenerator::global();
                         int randSide = generator->bounded(2); // 0 or 1
-                        if(randSide == 0){//Fall left
+                        if(randSide == 0)
+                        {
                             this->fallLeft(x,y);
                         }
-                        else{//Fall right.
+                        else
+                        {
                             this->fallRight(x,y);
-                            x+= this->getSandSideLength()+1;
                         }
                         continue;
                     }
 
-                    if(this->canFallRight(x,y)){
+                    if(this->canFallRight(x,y))
+                    {
                         this->fallRight(x,y);
-                        x+= this->getSandSideLength()+1;
                     }
-                    else if(this->canFallLeft(x,y)){
+                    else if(this->canFallLeft(x,y))
+                    {
                         this->fallLeft(x,y);
                     }
                 }
-                else{
+                else
+                {
                         this->fallDown(x,y);
-                        y+= this->getSandSideLength()+1;
                 }
             }
+
         }
     }
     update();
@@ -200,33 +234,36 @@ void Canvas::computeScreenMatrix(){
 }
 
 bool Canvas::canFallRight(int x,int y){
-
-   return (this->withinBoundaries(x+this->getSandSideLength(),y)) &&(!this->isOccupied(x+this->getSandSideLength(),y+this->getSandSideLength()) &&
-            this->isOccupied(x+this->getSandSideLength(),y+ (2*this->getSandSideLength())));
+    if(this->withinBoundaries(x+this->getSandSideLength(),y+this->getSandSideLength()))
+    {
+        if(!this->isOccupied(x+this->getSandSideLength(),y+this->getSandSideLength()) &&
+            (y +  (2*this->getSandSideLength()) == this->getYLength()-this->getSandSideLength() || this->isOccupied(x+this->getSandSideLength(),y+ (2*this->getSandSideLength()))))
+        {
+            return true;
+        }
+    }
+    return false;
 }
+
 bool Canvas::canFallLeft(int x,int y){
-    return (this->withinBoundaries(x-this->getSandSideLength()/2,y)) && (!this->isOccupied(x-this->getSandSideLength(),y+this->getSandSideLength()) &&
-            this->isOccupied(x-this->getSandSideLength(),y+ (2*this->getSandSideLength())));
+    if(this->withinBoundaries(x-this->getSandSideLength(),y+this->getSandSideLength()))
+    {
+        if(!this->isOccupied(x-this->getSandSideLength(),y+this->getSandSideLength()) &&
+           (y +  (2*this->getSandSideLength()) == this->getYLength()-this->getSandSideLength() || this->isOccupied(x-this->getSandSideLength(),y+ (2*this->getSandSideLength()))))
+        {
+            return true;
+        }
+    }
+    return false;
+
+
+
 }
 
 void Canvas::paintEvent(QPaintEvent *event){
     Q_UNUSED(event);
 
-    // if(this->drawSquare){
-    //         int* x = new int;
-    //         int* y = new int;
 
-    //         *x = this->lastMousePos->x();
-    //         *y = this->lastMousePos->y();
-    //         this->findClosestDrawingPoint(x,y);
-
-    //         this->clamp(x,y);
-    //         this->findClosestDrawingPoint(x,y);
-    //         this->screenMatrix[*x][*y] = true;
-
-    //         delete x;
-    //         delete y;
-    // }
 
     QPainter painter(this);
 
@@ -236,10 +273,6 @@ void Canvas::paintEvent(QPaintEvent *event){
                  painter.setBrush(QColor(this->colorMatrix[x][y].red(), this->colorMatrix[x][y].green(), this->colorMatrix[x][y].blue(),this->colorMatrix[x][y].alpha()));
                  painter.setPen(QColor(this->colorMatrix[x][y].red(), this->colorMatrix[x][y].green(), this->colorMatrix[x][y].blue(),this->colorMatrix[x][y].alpha()));
                  painter.drawRect(x,y, this->sandSideLength, this->sandSideLength);
-
-                 //TODO below. Store every sand and their colors in an array.
-                 //delete this->brushColor;
-                 //this->brushColor = new QColor(rand()%255, rand()%255, rand()%255, rand()%255);
             }
 
         }
@@ -247,7 +280,7 @@ void Canvas::paintEvent(QPaintEvent *event){
 }
 
 bool Canvas::withinBoundaries(int x, int y){
-    if((x > 0 && x < this->getXLength()) && (y > 0 && y < this->getYLength())){
+    if((x >= 0 && x < this->getXLength()) && (y >= 0 && y < this->getYLength())){
         return true;
     }
     return false;
@@ -346,32 +379,20 @@ int Canvas::getSandSideLength(){
     return this->sandSideLength;
 }
 
-// void Canvas::setFallSpeed(int speed){
-//     this->fallSpeed = speed;
-// }
-
-// int Canvas::getFallSpeed(){
-//     return this->fallSpeed;
-// }
 
 void Canvas::keyPressEvent(QKeyEvent *event){
     if (event->key() == Qt::Key_Space) {
-        qInfo() << "Spacebar pressed";
         QRandomGenerator *generator = QRandomGenerator::global();
-        for(int i = 0; i< 4; i++){
-            int randSide = generator->bounded(255); // 0,1,2,3
+        for(int i = 0; i< 3; i++){
+            int randSide = generator->bounded(255);
             if(i == 0){
-                this->brushColor->setRed(randSide);
+                  this->brushColor->setRed(randSide);
             }
             else if(i == 1){
-                this->brushColor->setGreen(randSide);
-
-            }
-            else if(i==2){
-                this->brushColor->setBlue(randSide);
+                  this->brushColor->setGreen(randSide);
             }
             else{
-               this->brushColor->setAlpha(randSide);
+                  this->brushColor->setBlue(randSide);
             }
         }
     }
