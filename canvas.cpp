@@ -7,7 +7,7 @@ Canvas::Canvas() {
     this->drawSquare = false;
     this->setXLength(600);
     this->setYLength(600);
-    this->setMsToRedraw(15);
+    this->setMsToRedraw(30);
     this->setSandSideLength(8);
 
     //Initializing the screen matrix.
